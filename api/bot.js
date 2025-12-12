@@ -1,36 +1,21 @@
-import express from "express";
 import { Telegraf, Markup } from "telegraf";
+import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import path from "path";
-import { fileURLToPath } from "url";
+import fs from "fs";
 
 dotenv.config();
 
 // =======================
-// PATH FIX (for images folder)
-// =======================
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// =======================
 // INIT
 // =======================
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const app = express();
-app.use(express.json());
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
-
-const MODEL_CHAT = "mistralai/mistral-nemo"; // Chat model
-const MODEL_IMAGE = "openai/dall-e-mini"; // Image model
 
 // =======================
-// Fetch last 5 messages (memory)
+// Conversation Memory
 // =======================
 async function getConversationMemory(user_id) {
   const { data } = await supabase
@@ -41,65 +26,6 @@ async function getConversationMemory(user_id) {
     .limit(5);
 
   return data?.reverse() || [];
-}
-
-// =======================
-// Generate AI Response
-// =======================
-async function generateAIResponse(user_id, text) {
-  try {
-    const memory = await getConversationMemory(user_id);
-
-    const messages = [
-      { role: "system", content: "You are PlutoxAI, a helpful friendly assistant." },
-      ...memory.map(m => ({ role: m.role, content: m.content })),
-      { role: "user", content: text }
-    ];
-
-    const response = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
-      { model: MODEL_CHAT, messages },
-      {
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    return response.data?.choices?.[0]?.message?.content || "⚠️ AI returned no response.";
-  } catch (err) {
-    console.error("AI ERROR:", err.response?.data || err);
-    return "⚠️ AI encountered an issue. Please try again.";
-  }
-}
-
-// =======================
-// Generate AI Image
-// =======================
-async function generateAIImage(prompt) {
-  try {
-    const response = await axios.post(
-      "https://openrouter.ai/v1/images/generate",
-      {
-        model: MODEL_IMAGE,
-        prompt,
-        size: "1024x1024",
-        n: 1
-      },
-      {
-        headers: {
-          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    return response.data?.data?.[0]?.url || null;
-  } catch (err) {
-    console.error("Image generation error:", err.response?.data || err);
-    return null;
-  }
 }
 
 // =======================
@@ -130,12 +56,76 @@ async function registerUser(ctx) {
 }
 
 // =======================
-// /start → Welcome + Local Image + Buttons
+// Generate AI Response
 // =======================
+const MODEL_CHAT = "mistralai/mistral-nemo";
+
+async function generateAIResponse(user_id, text) {
+  try {
+    const memory = await getConversationMemory(user_id);
+    const messages = [
+      { role: "system", content: "You are PlutoxAI, a helpful friendly assistant." },
+      ...memory.map(m => ({ role: m.role, content: m.content })),
+      { role: "user", content: text }
+    ];
+
+    const response = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      { model: MODEL_CHAT, messages },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+    return response.data?.choices?.[0]?.message?.content || "⚠️ AI returned no response.";
+  } catch (err) {
+    console.error("AI ERROR:", err.response?.data || err);
+    return "⚠️ AI encountered an issue. Please try again.";
+  }
+}
+
+// =======================
+// Generate AI Image
+// =======================
+const MODEL_IMAGE = "openai/dall-e-mini";
+
+async function generateAIImage(prompt) {
+  try {
+    const response = await axios.post(
+      "https://openrouter.ai/v1/images/generate",
+      { model: MODEL_IMAGE, prompt, size: "1024x1024", n: 1 },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+    return response.data?.data?.[0]?.url || null;
+  } catch (err) {
+    console.error("Image generation error:", err.response?.data || err);
+    return null;
+  }
+}
+
+// =======================
+// Handlers
+// =======================
+
+// /start command
 bot.start(async (ctx) => {
   await registerUser(ctx);
 
-  const bannerPath = path.join(__dirname, "images/banner.png");
+  // Banner image from local folder
+  const bannerPath = path.join(process.cwd(), "images/banner.png");
+
+  if (!fs.existsSync(bannerPath)) {
+    await ctx.reply("👋 Welcome to PlutoxAI!\nYour smart AI assistant.");
+    return;
+  }
 
   await ctx.replyWithPhoto(
     { source: bannerPath },
@@ -144,15 +134,13 @@ bot.start(async (ctx) => {
       parse_mode: "Markdown",
       ...Markup.inlineKeyboard([
         [Markup.button.callback("🚀 Start Conversation", "start_convo")],
-        [Markup.button.url("🌐 Join Community", "https://t.me/+CkHQ8D_Ie0IzYjg0")] // <-- Your TG channel
+        [Markup.button.url("🌐 Join Community", "https://t.me/+CkHQ8D_Ie0IzYjg0")]
       ])
     }
   );
 });
 
-// =======================
-// Start Conversation Button
-// =======================
+// Start conversation button
 bot.action("start_convo", async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.reply(
@@ -161,33 +149,26 @@ bot.action("start_convo", async (ctx) => {
   );
 });
 
-// =======================
-// Main Message Handler with AI Image Detection & Creator Response
-// =======================
+// Text messages handler
 bot.on("text", async (ctx) => {
   const user_id = ctx.from.id;
   const text = ctx.message.text;
+  const lowerText = text.toLowerCase();
 
   await registerUser(ctx);
   await saveMessage(user_id, "user", text);
 
   await ctx.sendChatAction("typing");
 
-  const lowerText = text.toLowerCase();
-
-  // ---- Custom creator response ----
-  if (
-    lowerText.includes("who created you") ||
-    lowerText.includes("creator") ||
-    lowerText.includes("who made you")
-  ) {
+  // Creator response
+  if (lowerText.includes("who created you") || lowerText.includes("creator") || lowerText.includes("who made you")) {
     const creatorReply = `🤖 I was created by *PlutoxofWeb3*.\n\nConnect with the creator:\n• X: @Plutoxofweb3\n• Telegram: @PlutoxWeb3`;
     await ctx.reply(creatorReply, { parse_mode: "Markdown" });
     await saveMessage(user_id, "bot", creatorReply);
     return;
   }
 
-  // ---- Detect if user wants an image ----
+  // Image detection
   const imageKeywords = ["image", "photo", "picture", "show me", "draw", "generate"];
   const wantsImage = imageKeywords.some(word => lowerText.includes(word));
 
@@ -201,18 +182,29 @@ bot.on("text", async (ctx) => {
       await ctx.reply("⚠️ Failed to generate the image. Try again later.");
       await saveMessage(user_id, "bot", "⚠️ Failed to generate image");
     }
-
-    return; // Skip text reply
+    return;
   }
 
-  // ---- Normal AI response ----
+  // Normal AI response
   const reply = await generateAIResponse(user_id, text);
   await saveMessage(user_id, "bot", reply);
-  ctx.reply(reply);
+  await ctx.reply(reply);
 });
 
 // =======================
-// Start Bot + API
+// Express + Vercel Adapter
 // =======================
-bot.launch();
-app.listen(5000, () => console.log("🔥 PlutoxAI Backend Running on port 5000"));
+const app = express();
+app.use(express.json());
+
+app.post("/api/bot", async (req, res) => {
+  try {
+    await bot.handleUpdate(req.body);
+    res.status(200).send("OK");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Error");
+  }
+});
+
+export default app;
