@@ -120,7 +120,7 @@ bot.start(async (ctx) => {
   await registerUser(ctx);
 
   // Banner image from local folder
-  const bannerPath = path.join(process.cwd(), "backend/images/banner.png");
+  const bannerPath = path.join(process.cwd(), "/banner.png");
 
   if (!fs.existsSync(bannerPath)) {
     await ctx.reply("👋 Welcome to PlutoxAI!\nYour smart AI assistant.");
