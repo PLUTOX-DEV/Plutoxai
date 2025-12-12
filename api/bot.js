@@ -3,8 +3,6 @@ import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
-import path from "path";
-import fs from "fs";
 
 dotenv.config();
 
@@ -50,7 +48,7 @@ async function registerUser(ctx) {
     await supabase.from("users").insert({
       id: user.id,
       username: user.username,
-      first_name: user.first_name
+      first_name: user.first_name,
     });
   }
 }
@@ -65,8 +63,8 @@ async function generateAIResponse(user_id, text) {
     const memory = await getConversationMemory(user_id);
     const messages = [
       { role: "system", content: "You are PlutoxAI, a helpful friendly assistant." },
-      ...memory.map(m => ({ role: m.role, content: m.content })),
-      { role: "user", content: text }
+      ...memory.map((m) => ({ role: m.role, content: m.content })),
+      { role: "user", content: text },
     ];
 
     const response = await axios.post(
@@ -75,8 +73,8 @@ async function generateAIResponse(user_id, text) {
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+        },
       }
     );
 
@@ -100,8 +98,8 @@ async function generateAIImage(prompt) {
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+        },
       }
     );
     return response.data?.data?.[0]?.url || null;
@@ -112,23 +110,17 @@ async function generateAIImage(prompt) {
 }
 
 // =======================
-// Handlers
+// Bot Handlers
 // =======================
 
-// /start command
+// Public banner URL
+const BANNER_URL = "https://plutoxai.vercel.app/api/bot/banner.png"; // <-- Replace with your hosted image URL
+
 bot.start(async (ctx) => {
   await registerUser(ctx);
 
-  // Banner image from local folder
-  const bannerPath = path.join(process.cwd(), "/banner.png");
-
-  if (!fs.existsSync(bannerPath)) {
-    await ctx.reply("👋 Welcome to PlutoxAI!\nYour smart AI assistant.");
-    return;
-  }
-
   await ctx.replyWithPhoto(
-    { source: bannerPath },
+    BANNER_URL,
     {
       caption: `👋 *Welcome to PlutoxAI!*\n\nYour smart AI assistant.\nTap the button below to begin:`,
       parse_mode: "Markdown",
@@ -140,7 +132,6 @@ bot.start(async (ctx) => {
   );
 });
 
-// Start conversation button
 bot.action("start_convo", async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.reply(
@@ -149,7 +140,6 @@ bot.action("start_convo", async (ctx) => {
   );
 });
 
-// Text messages handler
 bot.on("text", async (ctx) => {
   const user_id = ctx.from.id;
   const text = ctx.message.text;
@@ -161,7 +151,11 @@ bot.on("text", async (ctx) => {
   await ctx.sendChatAction("typing");
 
   // Creator response
-  if (lowerText.includes("who created you") || lowerText.includes("creator") || lowerText.includes("who made you")) {
+  if (
+    lowerText.includes("who created you") ||
+    lowerText.includes("creator") ||
+    lowerText.includes("who made you")
+  ) {
     const creatorReply = `🤖 I was created by *PlutoxofWeb3*.\n\nConnect with the creator:\n• X: @Plutoxofweb3\n• Telegram: @PlutoxWeb3`;
     await ctx.reply(creatorReply, { parse_mode: "Markdown" });
     await saveMessage(user_id, "bot", creatorReply);
@@ -170,7 +164,7 @@ bot.on("text", async (ctx) => {
 
   // Image detection
   const imageKeywords = ["image", "photo", "picture", "show me", "draw", "generate"];
-  const wantsImage = imageKeywords.some(word => lowerText.includes(word));
+  const wantsImage = imageKeywords.some((word) => lowerText.includes(word));
 
   if (wantsImage) {
     const imageUrl = await generateAIImage(text);
@@ -192,8 +186,7 @@ bot.on("text", async (ctx) => {
 });
 
 // =======================
-// Express + Vercel Adapter
-// =======================
+// Express App (Vercel)
 const app = express();
 app.use(express.json());
 
