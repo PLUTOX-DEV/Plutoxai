@@ -114,7 +114,7 @@ async function generateAIImage(prompt) {
 // =======================
 
 // Public banner URL
-const BANNER_URL = "https://plutoxai.vercel.app/api/bot/banner.png"; // <-- Replace with your hosted image URL
+const BANNER_URL = "https://plutoxai.vercel.app/api/banner.png"; // <-- Replace with your hosted image URL
 
 bot.start(async (ctx) => {
   await registerUser(ctx);
