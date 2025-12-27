@@ -9,13 +9,17 @@ dotenv.config();
 // =======================
 // INIT
 // =======================
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_KEY!
+);
+
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
 
 // =======================
 // Conversation Memory
 // =======================
-async function getConversationMemory(user_id) {
+async function getConversationMemory(user_id: number) {
   const { data } = await supabase
     .from("messages")
     .select("role, content")
@@ -29,14 +33,14 @@ async function getConversationMemory(user_id) {
 // =======================
 // Save Message
 // =======================
-async function saveMessage(user_id, role, content) {
+async function saveMessage(user_id: number, role: string, content: string) {
   await supabase.from("messages").insert({ user_id, role, content });
 }
 
 // =======================
 // Register User
 // =======================
-async function registerUser(ctx) {
+async function registerUser(ctx: any) {
   const user = ctx.from;
   const { data } = await supabase
     .from("users")
@@ -58,17 +62,17 @@ async function registerUser(ctx) {
 // =======================
 const MODEL_CHAT = "mistralai/mistral-nemo";
 
-async function generateAIResponse(user_id, text) {
+async function generateAIResponse(user_id: number, text: string) {
   try {
     const memory = await getConversationMemory(user_id);
     const messages = [
-      { role: "system", content: "You are PlutoxAI, a helpful friendly assistant." },
-      ...memory.map((m) => ({ role: m.role, content: m.content })),
+      { role: "system", content: "You are PlutoxAI, a friendly, helpful assistant." },
+      ...memory.map((m: any) => ({ role: m.role, content: m.content })),
       { role: "user", content: text },
     ];
 
     const response = await axios.post(
-      "https://openrouter.ai/api/v1/chat/completions",
+      "https://openrouter.ai/v1/chat/completions",
       { model: MODEL_CHAT, messages },
       {
         headers: {
@@ -79,7 +83,7 @@ async function generateAIResponse(user_id, text) {
     );
 
     return response.data?.choices?.[0]?.message?.content || "⚠️ AI returned no response.";
-  } catch (err) {
+  } catch (err: any) {
     console.error("AI ERROR:", err.response?.data || err);
     return "⚠️ AI encountered an issue. Please try again.";
   }
@@ -90,10 +94,10 @@ async function generateAIResponse(user_id, text) {
 // =======================
 const MODEL_IMAGE = "openai/dall-e-mini";
 
-async function generateAIImage(prompt) {
+async function generateAIImage(prompt: string) {
   try {
     const response = await axios.post(
-      "https://openrouter.ai/v1/images/generate",
+      "https://openrouter.ai/v1/images/generations",
       { model: MODEL_IMAGE, prompt, size: "1024x1024", n: 1 },
       {
         headers: {
@@ -103,7 +107,7 @@ async function generateAIImage(prompt) {
       }
     );
     return response.data?.data?.[0]?.url || null;
-  } catch (err) {
+  } catch (err: any) {
     console.error("Image generation error:", err.response?.data || err);
     return null;
   }
@@ -112,9 +116,7 @@ async function generateAIImage(prompt) {
 // =======================
 // Bot Handlers
 // =======================
-
-// Public banner URL
-const BANNER_URL = "https://ik.imagekit.io/aai4wumu3/ChatGPT%20Image%20Dec%2012,%202025,%2002_23_35%20AM.png"; // <-- Replace with your hosted image URL
+const BANNER_URL = "https://ik.imagekit.io/aai4wumu3/ChatGPT%20Image%20Dec%2012,%202025,%2002_23_35%20AM.png";
 
 bot.start(async (ctx) => {
   await registerUser(ctx);
@@ -151,11 +153,7 @@ bot.on("text", async (ctx) => {
   await ctx.sendChatAction("typing");
 
   // Creator response
-  if (
-    lowerText.includes("who created you") ||
-    lowerText.includes("creator") ||
-    lowerText.includes("who made you")
-  ) {
+  if (lowerText.includes("who created you") || lowerText.includes("creator") || lowerText.includes("who made you")) {
     const creatorReply = `🤖 I was created by *PlutoxofWeb3*.\n\nConnect with the creator:\n• X: @Plutoxofweb3\n• Telegram: @PlutoxWeb3`;
     await ctx.reply(creatorReply, { parse_mode: "Markdown" });
     await saveMessage(user_id, "bot", creatorReply);
@@ -168,7 +166,6 @@ bot.on("text", async (ctx) => {
 
   if (wantsImage) {
     const imageUrl = await generateAIImage(text);
-
     if (imageUrl) {
       await ctx.replyWithPhoto(imageUrl, { caption: "🖼 Here’s your AI-generated image!" });
       await saveMessage(user_id, "bot", imageUrl);
@@ -186,7 +183,8 @@ bot.on("text", async (ctx) => {
 });
 
 // =======================
-// Express App (Vercel)
+// Express App for Webhook
+// =======================
 const app = express();
 app.use(express.json());
 
